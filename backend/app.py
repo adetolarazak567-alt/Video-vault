@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 import yt_dlp
 import uuid
-import subprocess
 import requests
+import subprocess
 
 app = Flask(__name__)
 CORS(app)
@@ -29,8 +29,7 @@ def fetch():
     except Exception:
         return jsonify({"error": "Failed to fetch video info"}), 500
 
-    videos = []
-    audios = []
+    videos, audios = [], []
 
     for f in info.get("formats", []):
         if not f.get("url"):
@@ -60,7 +59,6 @@ def fetch():
         "audios": audios
     })
 
-
 # ================= DOWNLOAD / CONVERT =================
 @app.route("/download", methods=["GET"])
 def download():
@@ -72,51 +70,55 @@ def download():
         return jsonify({"error": "No file URL"}), 400
 
     try:
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+
         if convert_mp3:
-            # Stream video URL to ffmpeg and convert to mp3 on-the-fly
+            # Convert to mp3 on-the-fly using ffmpeg
+            r = requests.get(file_url, headers=headers, stream=True, timeout=20)
             cmd = [
-                "ffmpeg", "-i", file_url,
-                "-f", "mp3", "-ab", "192k", "-vn", "-"
+                "ffmpeg",
+                "-i", "pipe:0",
+                "-vn", "-ab", "192k", "-f", "mp3",
+                "pipe:1"
             ]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
             def generate():
+                for chunk in r.iter_content(chunk_size=1024*32):
+                    if chunk:
+                        process.stdin.write(chunk)
+                        process.stdin.flush()
+                process.stdin.close()
                 while True:
-                    chunk = process.stdout.read(8192)
-                    if not chunk:
+                    out_chunk = process.stdout.read(8192)
+                    if not out_chunk:
                         break
-                    yield chunk
+                    yield out_chunk
 
-            headers = {
-                "Content-Disposition": f'attachment; filename="{filename}.mp3"'
-            }
             return Response(
                 stream_with_context(generate()),
-                headers=headers,
+                headers={"Content-Disposition": f'attachment; filename="{filename}.mp3"'},
                 content_type="audio/mpeg"
             )
-
         else:
-            # Just stream the file directly
-            r = requests.get(file_url, stream=True, timeout=15)
+            # Stream video/audio directly
+            r = requests.get(file_url, headers=headers, stream=True, timeout=20)
 
             def generate():
                 for chunk in r.iter_content(chunk_size=8192):
                     if chunk:
                         yield chunk
 
-            headers = {
-                "Content-Disposition": f'attachment; filename="{filename}"'
-            }
             return Response(
                 stream_with_context(generate()),
-                headers=headers,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
                 content_type=r.headers.get("Content-Type", "application/octet-stream")
             )
 
     except Exception as e:
-        return jsonify({"error": "Download or conversion failed", "details": str(e)}), 500
-
+        return jsonify({"error": "Download/conversion failed", "details": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=5000)
