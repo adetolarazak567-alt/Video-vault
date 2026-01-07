@@ -70,12 +70,10 @@ def download():
         return jsonify({"error": "No file URL"}), 400
 
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
+        headers = {"User-Agent": "Mozilla/5.0"}
 
         if convert_mp3:
-            # Convert to mp3 on-the-fly using ffmpeg
+            # Convert to mp3 on-the-fly
             r = requests.get(file_url, headers=headers, stream=True, timeout=20)
             cmd = [
                 "ffmpeg",
@@ -103,7 +101,7 @@ def download():
                 content_type="audio/mpeg"
             )
         else:
-            # Stream video/audio directly
+            # Stream video directly
             r = requests.get(file_url, headers=headers, stream=True, timeout=20)
 
             def generate():
