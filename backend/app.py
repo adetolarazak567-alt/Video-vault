@@ -40,7 +40,7 @@ def fetch():
         if not f.get("url"):
             continue
 
-        # Audio-only formats
+        # Audio-only
         if f.get("vcodec") == "none":
             audios.append({
                 "id": str(uuid.uuid4()),
@@ -50,8 +50,8 @@ def fetch():
                 "url": f.get("url")
             })
 
-        # Video formats (with audio)
-        elif f.get("acodec") != "none":
+        # Video with audio (playable formats only)
+        elif f.get("vcodec") != "none" and f.get("acodec") != "none":
             videos.append({
                 "id": str(uuid.uuid4()),
                 "type": "video",
@@ -79,6 +79,7 @@ def download():
         return jsonify({"error": "No file URL"}), 400
 
     try:
+        # Add timeout
         r = requests.get(file_url, stream=True, timeout=15)
 
         def generate():
