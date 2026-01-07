@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VideoVault Downloader</title>
+
+<style>
+body{
+  background:#0b0f1a;
+  color:#fff;
+  font-family:system-ui;
+  padding:20px;
+}
+.card{
+  max-width:900px;
+  margin:auto;
+  background:#121833;
+  padding:24px;
+  border-radius:18px;
+  box-shadow:0 20px 50px rgba(0,0,0,.6);
+}
+input,select,button{
+  width:100%;
+  padding:14px;
+  margin-top:12px;
+  border-radius:12px;
+  border:none;
+  font-size:16px;
+}
+button{
+  background:linear-gradient(135deg,#ff6b6b,#ff9f43);
+  font-weight:700;
+  cursor:pointer;
+}
+button:hover{opacity:.9}
+.progress{
+  height:10px;
+  background:#222;
+  border-radius:999px;
+  margin-top:12px;
+  overflow:hidden;
+}
+.progress div{
+  height:100%;
+  width:0;
+  background:#4cd964;
+  transition:.4s;
+}
+img{border-radius:12px;margin-top:12px}
+small{opacity:.7}
+</style>
+</head>
+
+<body>
+<div class="card">
+  <h1>🎬 VideoVault</h1>
+  <small>Paste any public video link</small>
+
+  <input id="url" placeholder="Paste video URL here">
+
+
+
+  <button onclick="fetchVideo()">Fetch Video</button>
+
+  <div class="progress"><div id="bar"></div></div>
+
+  <div id="result"></div>
+
+  <h3>Recent Downloads</h3>
+  <ul id="history"></ul>
+</div>
+
+<script>
+const API = "https://YOUR-BACKEND.onrender.com";
+
+async function fetchVideo(){
+  const url = document.getElementById("url").value;
+
+  const res = await fetch(API + "/fetch",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({url})
+  });
+
+  const data = await res.json();
+
+  let html = `
+    <h2>${data.title}</h2>
+    <img src="${data.thumbnail}" width="220">
+  `;
+
+  if(data.videos.length){
+    html += `
+      <h3>🎞 Video Formats</h3>
+      <select id="videoFmt">
+        ${data.videos.map(v =>
+          `<option value="${v.url}">
+            ${v.ext} ${v.quality || ""}
+          </option>`
+        ).join("")}
+      </select>
+      <button onclick="download('videoFmt')">Download Video</button>
+    `;
+  }
+
+  if(data.audios.length){
+    html += `
+      <h3>🎧 Convert to MP3</h3>
+      <select id="audioFmt">
+        ${data.audios.map(a =>
+          `<option value="${a.url}">
+            MP3 ${a.quality || ""}kbps
+          </option>`
+        ).join("")}
+      </select>
+      <button onclick="download('audioFmt')">Download MP3</button>
+    `;
+  }
+
+  document.getElementById("result").innerHTML = html;
+}
+
+function download(id){
+  const url = document.getElementById(id).value;
+  window.open(url);
+}
+</script>
+</body>
+  </html>
