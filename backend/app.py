@@ -21,7 +21,11 @@ def fetch():
     if not url:
         return jsonify({"error": "No URL"}), 400
 
-    ydl_opts = {"quiet": True, "skip_download": True, "nocheckcertificate": True}
+    ydl_opts = {
+        "quiet": True,
+        "skip_download": True,
+        "nocheckcertificate": True
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -34,18 +38,20 @@ def fetch():
     for f in info.get("formats", []):
         if not f.get("url"):
             continue
-        if f.get("vcodec") == "none":  # audio-only
+
+        # audio-only
+        if f.get("vcodec") == "none":
             audios.append({
                 "id": str(uuid.uuid4()),
-                "type": "audio",
                 "ext": "mp3",
                 "quality": f.get("abr"),
                 "url": f.get("url")
             })
-        elif f.get("acodec") != "none":  # video+audio
+
+        # video + audio
+        elif f.get("acodec") != "none":
             videos.append({
                 "id": str(uuid.uuid4()),
-                "type": "video",
                 "ext": f.get("ext"),
                 "quality": f.get("format_note") or f.get("resolution"),
                 "url": f.get("url")
@@ -54,69 +60,79 @@ def fetch():
     return jsonify({
         "title": info.get("title"),
         "thumbnail": info.get("thumbnail"),
-        "duration": info.get("duration"),
         "videos": videos,
         "audios": audios
     })
+
 
 # ================= DOWNLOAD / CONVERT =================
 @app.route("/download", methods=["GET"])
 def download():
     file_url = request.args.get("url")
-    convert_mp3 = request.args.get("mp3", "false").lower() == "true"
-    filename = request.args.get("name", "VideoVault_Download")
+    mp3 = request.args.get("mp3", "false").lower() == "true"
+    name = request.args.get("name", "VideoVault")
 
     if not file_url:
-        return jsonify({"error": "No file URL"}), 400
+        return jsonify({"error": "No URL"}), 400
+
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
+        if mp3:
+            r = requests.get(file_url, headers=headers, stream=True, timeout=30)
 
-        if convert_mp3:
-            # Convert to mp3 on-the-fly
-            r = requests.get(file_url, headers=headers, stream=True, timeout=20)
             cmd = [
-                "ffmpeg",
-                "-i", "pipe:0",
-                "-vn", "-ab", "192k", "-f", "mp3",
-                "pipe:1"
+                "ffmpeg", "-i", "pipe:0",
+                "-vn", "-ab", "192k",
+                "-f", "mp3", "pipe:1"
             ]
-            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+            process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL
+            )
 
             def generate():
-                for chunk in r.iter_content(chunk_size=1024*32):
+                for chunk in r.iter_content(1024 * 32):
                     if chunk:
                         process.stdin.write(chunk)
-                        process.stdin.flush()
                 process.stdin.close()
+
                 while True:
-                    out_chunk = process.stdout.read(8192)
-                    if not out_chunk:
+                    out = process.stdout.read(8192)
+                    if not out:
                         break
-                    yield out_chunk
+                    yield out
 
             return Response(
                 stream_with_context(generate()),
-                headers={"Content-Disposition": f'attachment; filename="{filename}.mp3"'},
+                headers={
+                    "Content-Disposition": f'attachment; filename="{name}.mp3"'
+                },
                 content_type="audio/mpeg"
             )
+
         else:
-            # Stream video directly
-            r = requests.get(file_url, headers=headers, stream=True, timeout=20)
+            r = requests.get(file_url, headers=headers, stream=True, timeout=30)
 
             def generate():
-                for chunk in r.iter_content(chunk_size=8192):
+                for chunk in r.iter_content(8192):
                     if chunk:
                         yield chunk
 
             return Response(
                 stream_with_context(generate()),
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-                content_type=r.headers.get("Content-Type", "application/octet-stream")
+                headers={
+                    "Content-Disposition": f'attachment; filename="{name}.mp4"'
+                },
+                content_type="application/octet-stream"
             )
 
     except Exception as e:
-        return jsonify({"error": "Download/conversion failed", "details": str(e)}), 500
+        return jsonify({"error": "Download failed", "details": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
